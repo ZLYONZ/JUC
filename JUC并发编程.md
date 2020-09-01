@@ -1120,7 +1120,120 @@ semaphore.release( )   释放，会将当前的信号量释放+1，然后唤醒�
 
 **ReadWriteLock**
 
+![image-20200901103643494](C:\Users\DELL\AppData\Roaming\Typora\typora-user-images\image-20200901103643494.png)
 
+
+
+```java
+package readWriteLock;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+
+/**
+ * 独占锁（写锁）一次只能被一个线程占用
+ * 共享锁（写锁）多个线程可以同时占有
+ * ReadWriteLock
+ * 读-读	可以共存！
+ * 读-写	不能共存！
+ * 写-写	不能共存！
+ */
+public class RWL {
+
+	public static void main(String[] args) {
+
+		MyCacheLock lock = new MyCacheLock();
+
+		// 写入
+		for (int i = 1; i <= 5; i++) {
+			final int temp = i;
+			new Thread(() -> {
+				lock.put(temp + "", temp + "");
+			}, String.valueOf(i)).start();
+		}
+
+		// 读取
+		for (int i = 1; i <= 5; i++) {
+			final int temp = i;
+			new Thread(() -> {
+				lock.get(temp + "");
+			}, String.valueOf(i)).start();
+		}
+	}
+}
+
+/**
+ * 自定义缓存
+ */
+class MyCache {
+
+	private volatile Map<String, Object> map = new HashMap<>();
+
+	// 存 / 写
+	public void put(String key, Object value) {
+		System.out.println(Thread.currentThread().getName() + "写入" + key);
+		map.put(key, value);
+		System.out.println(Thread.currentThread().getName() + "写入成功");
+	}
+
+	// 取 / 读
+	@SuppressWarnings("unused")
+	public void get(String key) {
+		System.out.println(Thread.currentThread().getName() + "读取" + key);
+		Object obj = map.get(key);
+		System.out.println(Thread.currentThread().getName() + "读取成功");
+	}
+}
+
+// 加锁
+class MyCacheLock {
+
+	private volatile Map<String, Object> map = new HashMap<>();
+
+	// 读写锁，更加细粒度的控制
+	private ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
+	@SuppressWarnings("unused")
+	private Lock lock = new ReentrantLock();
+
+	// 存，写入的时候，只希望同时只有一个线程写
+	public void put(String key, Object value) {
+
+		readWriteLock.writeLock().lock();
+
+		try {
+			System.out.println(Thread.currentThread().getName() + "写入" + key);
+			map.put(key, value);
+			System.out.println(Thread.currentThread().getName() + "写入成功");
+		} catch (Exception e) {
+			e.printStackTrace();
+		} finally {
+			readWriteLock.writeLock().unlock();
+		}
+	}
+
+	// 取，读的时候，所有人都可以读
+	@SuppressWarnings("unused")
+	public void get(String key) {
+
+		readWriteLock.readLock().lock();
+
+		try {
+			System.out.println(Thread.currentThread().getName() + "读取" + key);
+			Object obj = map.get(key);
+			System.out.println(Thread.currentThread().getName() + "读取成功");
+		} catch (Exception e) {
+			e.printStackTrace();
+		} finally {
+			readWriteLock.readLock().unlock();
+		}
+	}
+}
+
+```
 
 
 
@@ -1130,17 +1243,235 @@ semaphore.release( )   释放，会将当前的信号量释放+1，然后唤醒�
 
 ## 10 阻塞队列 
 
-**Blocking Queue**
-
-### 10.1 API
+![image-20200901143126152](C:\Users\DELL\AppData\Roaming\Typora\typora-user-images\image-20200901143126152.png)
 
 
 
+**阻塞队列：**
+
+![image-20200901112605517](C:\Users\DELL\AppData\Roaming\Typora\typora-user-images\image-20200901112605517.png)
+
+**队列：**
+
+<img src="C:\Users\DELL\AppData\Roaming\Typora\typora-user-images\image-20200901143026797.png" alt="image-20200901143026797" style="zoom: 80%;" />
+
+**Blocking Queue**： 不是新的东西
+
+<img src="C:\Users\DELL\AppData\Roaming\Typora\typora-user-images\image-20200901142941970.png" alt="image-20200901142941970" style="zoom: 67%;" />
+
+什么情况下我们会使用阻塞队列：多线程并发处理，A - B	线程池
+
+
+
+**学会使用队列**
+
+添加、移除
+
+
+
+### 四组API
+
+| 方式         | 抛出异常   | 有返回值，不抛出异常 | 阻塞等待 | 超时等待         |
+| ------------ | ---------- | -------------------- | -------- | ---------------- |
+| 添加         | add( )     | offer( )             | put( )   | offer( )重载方法 |
+| 移除         | remove( )  | poll( )              | take( )  | poll( )重载方法  |
+| 检测队首元素 | element( ) | peek( )              | -        | -                |
+
+```java
+/**
+ * 抛出异常
+ */
+public static void test1() {
+	// 队列的大小
+	ArrayBlockingQueue<Object> bq = new ArrayBlockingQueue<>(3);
+
+	System.out.println(bq.add("a"));
+	System.out.println(bq.add("b"));
+	System.out.println(bq.add("c"));
+
+    // IllegalStateException: Queue full 抛出异常!
+	// System.out.println(bq.add("d"));
+    
+	System.out.println("-------------------------------");
+
+	System.out.println(bq.remove());
+	System.out.println(bq.remove());
+	System.out.println(bq.remove());
+    
+	// NoSuchElementException 抛出异常!
+	// System.out.println(bq.remove());
+}
+```
+
+```java
+/**
+* 有返回值，不抛出异常
+*/
+public static void test2() {
+	// 队列的大小
+	ArrayBlockingQueue<Object> bq = new ArrayBlockingQueue<>(3);
+		
+	System.out.println(bq.offer("a"));
+	System.out.println(bq.offer("b"));
+	System.out.println(bq.offer("c"));
+		
+	// 返回false，不抛出异常
+	//System.out.println(bq.offer("d")); 
+		
+	System.out.println("---------------------");
+		
+	System.out.println(bq.poll());
+	System.out.println(bq.poll());
+	System.out.println(bq.poll());
+		
+	// 返回null，不抛出异常 
+	// System.out.println(bq.poll());	
+}
+```
+
+```java
+/**
+ * 阻塞等待（一直阻塞）	 
+ * @throws InterruptedException 
+ */
+public static void test3() throws InterruptedException {
+	// 队列的大小
+	ArrayBlockingQueue<Object> bq = new ArrayBlockingQueue<>(3);
+		
+	bq.put("a");
+	bq.put("b");
+	bq.put("c");
+		
+	// 队列没有位置，一直阻塞
+	// bq.put("d"); 		
+		
+	System.out.println("---------------------");
+		
+	System.out.println(bq.take());
+	System.out.println(bq.take());
+	System.out.println(bq.take());
+		
+	// 没有元素，一直阻塞
+	// System.out.println(bq.take());
+}
+```
+
+```java
+/**
+ * 超时等待	 
+ * @throws InterruptedException 
+ */
+public static void test4() throws InterruptedException {
+	// 队列的大小
+	ArrayBlockingQueue<Object> bq = new ArrayBlockingQueue<>(3);
+		
+	bq.offer("a");
+	bq.offer("b");
+	bq.offer("c");
+		
+	// 等待超过后退出
+	// bq.offer("d", 2, TimeUnit.SECONDS);
+		
+	System.out.println("---------------------");
+		
+    System.out.println(bq.poll());
+	System.out.println(bq.poll());
+	System.out.println(bq.poll());
+		
+	// 等待超过后退出
+	// bq.poll(2, TimeUnit.SECONDS);
+}
+```
+
+
+
+### 同步队列
+
+Synchronous Queue	没有容量
+
+进去一个元素，必须等待取出来之后，才能再往里放元素
+
+```java
+package blockingQueue;
+
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.TimeUnit;
+
+/**
+ * 同步队列 和其他的 BlockingQueue 不一样，SynchronousQueue 不存储元素
+ * put了一个元素，必须从里面先take，否则不能再put
+ */
+public class SQ {
+
+	public static void main(String[] args) throws InterruptedException {
+
+		BlockingQueue<String> bq = new SynchronousQueue<>(); // 同步队列
+
+		new Thread(() -> {
+			try {
+				System.out.println(Thread.currentThread().getName() + " put 1");
+				bq.put("1");
+				System.out.println(Thread.currentThread().getName() + " put 2");
+				bq.put("2");
+				System.out.println(Thread.currentThread().getName() + " put 3");
+				bq.put("3");
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+		}, "T1").start();
+
+		new Thread(() -> {
+			try {
+				TimeUnit.SECONDS.sleep(2);
+				System.out.println(Thread.currentThread().getName() + "=>" + bq.take());
+				TimeUnit.SECONDS.sleep(2);
+				System.out.println(Thread.currentThread().getName() + "=>" + bq.take());
+				TimeUnit.SECONDS.sleep(2);
+				System.out.println(Thread.currentThread().getName() + "=>" + bq.take());
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+		}, "T2").start();
+	}
+}
+```
+
+
+
+## 11 线程池
+
+线程池：3大方法、7大参数、4种拒绝策略
+
+> 池化技术
+
+程序的运行，本质：占用系统的资源！优化资源的使用！
+
+线程池、连接池、内存池、对象池。。。创建，销毁，十分浪费资源
+
+池化技术：事先准备好一些资源，有人要用就可以拿，用完之后再还回来
+
+
+
+**线程池的好处：**
+
+1. 降低资源的消耗
+2. 提高响应的速度
+3. 方便管理
+
+！线程复用，可以控制最大并发数，管理线程！
+
+
+
+**线程池：三大方法**
 
 
 
 
-## 11 同步队列
+
+
+
+## 12
 
 
 
@@ -1152,17 +1483,7 @@ semaphore.release( )   释放，会将当前的信号量释放+1，然后唤醒�
 
 
 
-
-
-
-
-
-
-
-
-
-
-
+## 13
 
 
 
